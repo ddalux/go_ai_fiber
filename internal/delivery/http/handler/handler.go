@@ -25,6 +25,8 @@ func (h *Handler) RegisterRoutes(app *fiber.App) {
 	app.Post("/register", h.register)
 	app.Post("/login", h.login)
 	app.Get("/me", h.me)
+	app.Post("/transfer", h.transfer)
+	app.Get("/contacts/recent", h.recentRecipients)
 	app.Get("/swagger/doc.json", h.swaggerJSON)
 	app.Get("/swagger", h.swaggerUI)
 }
@@ -84,6 +86,61 @@ func (h *Handler) me(c *fiber.Ctx) error {
 		"birthday":   user.Birthday,
 		"created_at": user.CreatedAt,
 	})
+}
+
+func (h *Handler) transfer(c *fiber.Ctx) error {
+	auth := c.Get("Authorization")
+	const prefix = "Bearer "
+	if !strings.HasPrefix(auth, prefix) {
+		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "missing token"})
+	}
+	token := strings.TrimPrefix(auth, prefix)
+	// parse token to get sender email via usecase.Me
+	sender, err := h.uc.Me(token)
+	if err != nil {
+		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "invalid token"})
+	}
+	var p struct {
+		To     string `json:"to"` // member code or email
+		Amount int    `json:"amount"`
+		Note   string `json:"note"`
+	}
+	if err := c.BodyParser(&p); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid body"})
+	}
+	if p.Amount <= 0 {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "amount must be > 0"})
+	}
+	if err := h.uc.Transfer(sender.Email, p.To, p.Amount, p.Note); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": err.Error()})
+	}
+	return c.JSON(fiber.Map{"message": "transfer successful"})
+}
+
+func (h *Handler) recentRecipients(c *fiber.Ctx) error {
+	auth := c.Get("Authorization")
+	const prefix = "Bearer "
+	if !strings.HasPrefix(auth, prefix) {
+		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "missing token"})
+	}
+	token := strings.TrimPrefix(auth, prefix)
+	sender, err := h.uc.Me(token)
+	if err != nil {
+		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "invalid token"})
+	}
+	limit := 10
+	if l := c.Query("limit"); l != "" { /* ignore parse for brevity */
+	}
+	users, err := h.uc.RecentRecipients(sender.Email, limit)
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed"})
+	}
+	// return minimal recipient info
+	var out []fiber.Map
+	for _, u := range users {
+		out = append(out, fiber.Map{"member_code": u.MemberCode, "email": u.Email, "firstname": u.FirstName, "lastname": u.LastName})
+	}
+	return c.JSON(out)
 }
 
 func (h *Handler) swaggerJSON(c *fiber.Ctx) error {

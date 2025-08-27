@@ -48,5 +48,21 @@
         "responses": {"200": {"description": "user"}, "401": {"description": "unauthorized"}}
       }
     }
+    ,
+    "/transfer": {
+      "post": {
+        "summary": "Transfer points to another member or email",
+        "parameters": [{"name": "Authorization", "in": "header", "required": true, "schema": {"type": "string"}}],
+        "requestBody": {"required": true, "content": {"application/json": {"schema": {"type": "object","properties": {"to": {"type":"string"}, "amount": {"type":"integer"}, "note": {"type":"string"}},"required":["to","amount"]}}}},
+        "responses": {"200": {"description": "ok"}, "400": {"description": "bad request"}, "401": {"description": "unauthorized"}}
+      }
+    },
+    "/contacts/recent": {
+      "get": {
+        "summary": "Get recent recipients",
+        "parameters": [{"name": "Authorization", "in": "header", "required": true, "schema": {"type": "string"}}, {"name":"limit","in":"query","schema":{"type":"integer"}}],
+        "responses": {"200": {"description": "list"}, "401": {"description": "unauthorized"}}
+      }
+    }
   }
 }

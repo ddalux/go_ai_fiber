@@ -19,6 +19,8 @@ type UserUsecase interface {
 	Register(email, password, firstname, lastname, phone, birthday string) error
 	Login(email, password string) (string, error)
 	Me(token string) (*repo.User, error)
+	Transfer(fromEmail, toMemberOrEmail string, amount int, note string) error
+	RecentRecipients(senderEmail string, limit int) ([]repo.User, error)
 }
 
 type userUsecase struct {
@@ -85,4 +87,48 @@ func (u *userUsecase) Me(tokenStr string) (*repo.User, error) {
 		return nil, ErrUserNotFound
 	}
 	return user, nil
+}
+
+func (u *userUsecase) Transfer(fromEmail, toMemberOrEmail string, amount int, note string) error {
+	// find sender
+	sender, err := u.r.GetByEmail(fromEmail)
+	if err != nil {
+		return ErrUserNotFound
+	}
+	// find recipient by member code or email
+	var recipient *repo.User
+	recipient, err = u.r.GetByMemberCode(toMemberOrEmail)
+	if err != nil {
+		recipient, err = u.r.GetByEmail(toMemberOrEmail)
+		if err != nil {
+			return ErrUserNotFound
+		}
+	}
+	if sender.Points < amount {
+		return errors.New("insufficient points")
+	}
+	sender.Points -= amount
+	recipient.Points += amount
+	if err := u.r.Update(sender); err != nil {
+		return err
+	}
+	if err := u.r.Update(recipient); err != nil {
+		return err
+	}
+	tx := &repo.Transaction{
+		FromEmail: fromEmail,
+		ToEmail:   recipient.Email,
+		ToMember:  toMemberOrEmail,
+		Amount:    amount,
+		Note:      note,
+		CreatedAt: time.Now(),
+	}
+	if err := u.r.CreateTransaction(tx); err != nil {
+		return err
+	}
+	return nil
+}
+
+func (u *userUsecase) RecentRecipients(senderEmail string, limit int) ([]repo.User, error) {
+	return u.r.GetRecentRecipientsBySender(senderEmail, limit)
 }
